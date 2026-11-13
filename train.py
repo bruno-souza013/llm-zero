@@ -2,6 +2,7 @@ import csv
 import json
 import math
 import os
+import random
 import time
 from contextlib import nullcontext
 
@@ -113,6 +114,25 @@ def build_optimizer(model: LLM, train_config: TrainConfig) -> torch.optim.AdamW:
     )
 
 
+def capture_rng_state() -> dict:
+    state = {
+        "python": random.getstate(),
+        "numpy": np.random.get_state(),
+        "torch": torch.get_rng_state(),
+    }
+    if torch.cuda.is_available():
+        state["cuda"] = torch.cuda.get_rng_state_all()
+    return state
+
+
+def restore_rng_state(state: dict) -> None:
+    random.setstate(state["python"])
+    np.random.set_state(state["numpy"])
+    torch.set_rng_state(state["torch"])
+    if torch.cuda.is_available() and "cuda" in state:
+        torch.cuda.set_rng_state_all(state["cuda"])
+
+
 def main() -> None:
     model_config = ModelConfig()
     train_config = TrainConfig()
@@ -143,7 +163,8 @@ def main() -> None:
     scaler = torch.amp.GradScaler("cuda", enabled=use_fp16)
 
     os.makedirs(train_config.out_dir, exist_ok=True)
-    ckpt_path = os.path.join(train_config.out_dir, "ckpt.pt")
+    best_ckpt_path = os.path.join(train_config.out_dir, "best.pt")
+    last_ckpt_path = os.path.join(train_config.out_dir, "last.pt")
     metrics_path = os.path.join(train_config.out_dir, "metrics.csv")
     metrics_mode = "a" if getattr(train_config, "resume", False) else "w"
     metrics_file = open(metrics_path, metrics_mode, newline="", encoding="utf-8")
@@ -173,18 +194,38 @@ def main() -> None:
     best_val_loss = math.inf
 
     #retomada opcional: defina resume=True no TrainConfig.
-    if getattr(train_config, "resume", False) and os.path.exists(ckpt_path):
-        ckpt = torch.load(ckpt_path, map_location=device)
+    if getattr(train_config, "resume", False) and os.path.exists(last_ckpt_path):
+        ckpt = torch.load(last_ckpt_path, map_location=device)
         model.load_state_dict(ckpt["model"])
         optimizer.load_state_dict(ckpt["optimizer"])
         if use_fp16 and ckpt.get("scaler") is not None:
             scaler.load_state_dict(ckpt["scaler"])
-        start_iter = ckpt["step"]
+        if "rng_state" in ckpt:
+            restore_rng_state(ckpt["rng_state"])
+        start_iter = ckpt["step"] + 1
         best_val_loss = ckpt["val_loss"]
         print(f"Retomando do passo {start_iter} (val loss {best_val_loss:.4f})")
 
     grad_clip = getattr(train_config, "grad_clip", 1.0)
     accum_steps = train_config.gradient_accumulation_steps
+
+    def checkpoint_payload(step: int, val_loss: float) -> dict:
+        return {
+            "model": model.state_dict(),
+            "optimizer": optimizer.state_dict(),
+            "scaler": scaler.state_dict() if use_fp16 else None,
+            "model_config": model_config.__dict__,
+            "train_config": train_config.__dict__,
+            "step": step,
+            "val_loss": val_loss,
+            "rng_state": capture_rng_state(),
+        }
+
+    def save_last_checkpoint(step: int, val_loss: float) -> None:
+        torch.save(
+            checkpoint_payload(step, val_loss),
+            last_ckpt_path,
+        )
 
     def evaluate_and_checkpoint(step: int) -> None:
         nonlocal best_val_loss
@@ -213,16 +254,8 @@ def main() -> None:
         if losses["val"] < best_val_loss:
             best_val_loss = losses["val"]
             torch.save(
-                {
-                    "model": model.state_dict(),
-                    "optimizer": optimizer.state_dict(),
-                    "scaler": scaler.state_dict() if use_fp16 else None,
-                    "model_config": model_config.__dict__,
-                    "train_config": train_config.__dict__,
-                    "step": step,
-                    "val_loss": best_val_loss,
-                },
-                ckpt_path,
+                checkpoint_payload(step, best_val_loss),
+                best_ckpt_path,
             )
 
     model.train()
@@ -254,9 +287,12 @@ def main() -> None:
 
         if iteration % 10 == 0:
             print(f"step {iteration}: batch loss {loss_accum:.4f} | lr {lr:.2e}")
+        if iteration % train_config.eval_interval == 0:
+            save_last_checkpoint(iteration, best_val_loss)
 
     #avaliação final: garante que os últimos passos também possam virar checkpoint.
     evaluate_and_checkpoint(train_config.max_iters)
+    save_last_checkpoint(train_config.max_iters, best_val_loss)
     metrics_file.close()
     with open(
         os.path.join(train_config.out_dir, "run.json"),

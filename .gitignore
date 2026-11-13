@@ -40,3 +40,5 @@ Thumbs.db
 data/.cache/
 data/raw/
 *.zip
+
+plano_llm_zero.md

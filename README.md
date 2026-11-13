@@ -70,7 +70,7 @@ dropout: 0,1
 ```
 
 Na v2, o melhor resultado ocorreu na etapa `28.000`. O checkpoint salvo em
-`out-wiki-100k-v2/ckpt.pt` corresponde ao melhor `val_loss`, enquanto a última
+`out-wiki-100k-v2/best.pt` corresponde ao melhor `val_loss`, enquanto a última
 avaliação da etapa 30.000 teve `val_loss` 2,6701.
 
 Os relatórios completos são gerados em cada pasta de saída:
@@ -197,14 +197,15 @@ Depois de preparar os dados:
 O treinamento salva na pasta definida por `out_dir`:
 
 ```text
-ckpt.pt       # melhor checkpoint pela val loss
+best.pt       # melhor checkpoint pela val loss
+last.pt       # último estado salvo para retomada
 metrics.csv   # losses, perplexidade, learning rate e tempo
 run.json      # configuração e resumo da execução
 ```
 
 O checkpoint inclui pesos do modelo, estado do AdamW, scaler de mixed
-precision, configurações e etapa do melhor resultado. Para retomar um treino,
-use o mesmo `out_dir` e defina:
+precision, estados aleatórios, configurações e etapa do resultado. Para
+retomar um treino, use o mesmo `out_dir` e defina:
 
 ```python
 resume = True
@@ -230,7 +231,8 @@ da GPU. O gráfico mostra as curvas de treino/validação e o learning rate.
 
 ## Geração de texto
 
-O [generate.py](generate.py) permite escolher o checkpoint e o prompt:
+O [generate.py](generate.py) carrega `best.pt` por padrão e permite escolher o
+diretório do checkpoint e o prompt:
 
 ```powershell
 .\venv\Scripts\python.exe generate.py `

@@ -23,7 +23,9 @@ def parse_args() -> argparse.Namespace:
 
 def main() -> None:
     args = parse_args()
-    checkpoint_path = args.out_dir / "ckpt.pt"
+    checkpoint_path = args.out_dir / "best.pt"
+    if not checkpoint_path.exists():
+        checkpoint_path = args.out_dir / "ckpt.pt"
 
     if not checkpoint_path.exists():
         raise FileNotFoundError(
