@@ -195,7 +195,11 @@ def main() -> None:
 
     #retomada opcional: defina resume=True no TrainConfig.
     if getattr(train_config, "resume", False) and os.path.exists(last_ckpt_path):
-        ckpt = torch.load(last_ckpt_path, map_location=device)
+        ckpt = torch.load(
+            last_ckpt_path,
+            map_location=device,
+            weights_only=False,
+        )
         model.load_state_dict(ckpt["model"])
         optimizer.load_state_dict(ckpt["optimizer"])
         if use_fp16 and ckpt.get("scaler") is not None:

@@ -35,6 +35,7 @@ def main() -> None:
     checkpoint = torch.load(
         checkpoint_path,
         map_location=DEVICE,
+        weights_only=False,
     )
 
     model_config = ModelConfig(**checkpoint["model_config"])
