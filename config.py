@@ -20,7 +20,7 @@ class ModelConfig:
 @dataclass
 class TrainConfig:
     data_dir: str = "data/corpus_ptbr_100k"
-    out_dir: str = "out-corpus-ptbr-100k-v1"
+    out_dir: str = "experiments/corpus-ptbr-100k-v1"
 
     device: str = "cuda"
     batch_size: int = 8
