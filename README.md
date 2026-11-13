@@ -1,64 +1,113 @@
 # LLM Zero
 
-Um mini modelo de linguagem em português, implementado do zero para estudar
-como funciona um modelo causal no estilo GPT.
+Mini modelo de linguagem causal em português, implementado do zero com
+PyTorch para estudar o funcionamento de um modelo no estilo GPT.
 
-O projeto percorre o pipeline completo:
+> **Status:** projeto educacional em evolução. O modelo continua textos, mas
+> ainda não é um chatbot nem segue instruções.
+
+## Visão geral
 
 ```text
-Wikipédia em português
-        ↓
-limpeza e tokenização
-        ↓
-train.bin / val.bin
-        ↓
-Transformer causal
-        ↓
-treinamento em CUDA
-        ↓
-checkpoint e métricas
-        ↓
-geração de texto
+dataset → limpeza e tokenização → Transformer causal → treino → geração
 ```
 
-> **Status:** primeira versão funcional, com dois experimentos registrados.
+O projeto inclui:
 
-## O que foi implementado
+- preparação de dados em streaming;
+- tokenizer GPT-2 via `tiktoken`;
+- Transformer causal com atenção, MLP, LayerNorm e embeddings posicionais;
+- treinamento com AdamW, mixed precision e gradient accumulation;
+- checkpoints, métricas e geração por prompt.
 
-- preparação em streaming de artigos da Wikipédia em português;
-- limpeza de URLs, caracteres de controle e espaços;
-- remoção de artigos curtos e duplicados;
-- tokenização BPE com o encoding `gpt2` do `tiktoken`;
-- separação de documentos com o token `<|endoftext|>`;
-- Transformer causal implementado em PyTorch;
-- atenção causal, MLP, LayerNorm e embeddings de posição;
-- treinamento com AdamW, warmup, decaimento cosseno e gradient clipping;
-- mixed precision em GPU CUDA;
-- checkpoints com possibilidade de retomada;
-- métricas em CSV/JSON e gráfico do treinamento;
-- geração de texto por prompt.
+## Resultados atuais
 
-## Resultados
+Os experimentos abaixo usam a Wikipédia em português, a mesma arquitetura e a
+mesma seed.
 
-Os dois experimentos usaram o mesmo dataset, a mesma arquitetura e a mesma
-seed. A v2 aumentou o batch e o número de etapas.
+| Experimento | Etapas | Batch | Parâmetros | Melhor val loss | Perplexidade |
+|---|---:|---:|---:|---:|---:|
+| v1 | 10.000 | 4 × 4 | 30.044.544 | 3,1130 | 22,49 |
+| v2 | 30.000 | 8 × 4 | 30.044.544 | **2,5508** | **12,82** |
 
-| Experimento | Etapas | Batch | Parâmetros | Melhor val loss | Perplexidade | Tempo |
-|---|---:|---:|---:|---:|---:|---:|
-| v1 | 10.000 | 4 × 4 | 30.044.544 | 3,1130 | 22,49 | 23,45 min |
-| v2 | 30.000 | 8 × 4 | 30.044.544 | **2,5508** | **12,82** | 112,17 min |
+<details>
+<summary>Gráficos e detalhes dos resultados</summary>
 
-### Gráficos de treinamento
+### Gráficos
 
-#### v1
+![Métricas de treinamento da v1](experiments/wiki-100k-v1/training_metrics.png)
 
-![Métricas de treinamento da v1](out-wiki-100k-v1/training_metrics.png)
+![Métricas de treinamento da v2](experiments/wiki-100k-v2/training_metrics%20%281%29.png)
 
-#### v2
+Na v2, o melhor resultado ocorreu na etapa `28.000`. Os relatórios completos
+ficam nas pastas de cada experimento:
 
-![Métricas de treinamento da v2](out-wiki-100k-v2/training_metrics%20%281%29.png)
+```text
+benchmark.json
+metrics.csv
+run.json
+training_metrics.png
+```
 
-Configuração comum dos modelos:
+</details>
+
+## Início rápido
+
+### Instalação
+
+```powershell
+python -m pip install torch numpy tiktoken datasets tqdm matplotlib
+```
+
+Com o ambiente virtual deste projeto:
+
+```powershell
+.\venv\Scripts\python.exe -m pip install torch numpy tiktoken datasets tqdm matplotlib
+```
+
+### Preparar a Wikipédia
+
+```powershell
+.\venv\Scripts\python.exe scripts\prepare_wiki.py --artigos 100000 --forcar
+```
+
+Os arquivos serão criados em `data/wiki_pt/train.bin` e
+`data/wiki_pt/val.bin`.
+
+### Treinar
+
+```powershell
+.\venv\Scripts\python.exe train.py
+```
+
+### Gerar texto
+
+```powershell
+.\venv\Scripts\python.exe generate.py `
+    --out-dir experiments/wiki-100k-v2 `
+    --prompt "A história do Brasil" `
+    --max-new-tokens 200
+```
+
+## Estrutura
+
+```text
+llm-zero/
+├── config.py, model.py, train.py, generate.py
+├── scripts/
+│   ├── benchmark.py
+│   ├── prepare_wiki.py
+│   └── prepare_corpus_ptbr.py
+├── data/                       # datasets locais
+├── experiments/                # métricas e checkpoints
+├── docs/plano_llm_zero.md
+└── README.md
+```
+
+<details>
+<summary>Configuração do modelo</summary>
+
+As configurações ficam em [config.py](config.py):
 
 ```text
 vocab_size: 50.257
@@ -69,213 +118,71 @@ n_embd: 384
 dropout: 0,1
 ```
 
-Na v2, o melhor resultado ocorreu na etapa `28.000`. O checkpoint salvo em
-`out-wiki-100k-v2/best.pt` corresponde ao melhor `val_loss`, enquanto a última
-avaliação da etapa 30.000 teve `val_loss` 2,6701.
+O dispositivo padrão é CUDA. Para usar CPU, altere `device` para `"cpu"`.
 
-Os relatórios completos são gerados em cada pasta de saída:
+</details>
 
-```text
-benchmark.json
-metrics.csv
-run.json
-training_metrics.png
-```
+<details>
+<summary>Testes curtos e retomada</summary>
 
-## Estrutura
-
-```text
-llm-zero/
-├── config.py              # configurações do modelo e do treino
-├── model.py               # Transformer causal
-├── train.py               # loop de treinamento e checkpoints
-├── generate.py            # geração por prompt
-├── benchmark.py           # relatório e gráfico das métricas
-├── data/
-│   ├── prepare.py         # limpeza, download e tokenização
-│   └── wiki_pt/
-│       ├── train.bin
-│       └── val.bin
-├── out-wiki-100k-v1/      # artefatos do experimento v1
-├── out-wiki-100k-v2/      # artefatos do experimento v2
-└── README.md
-```
-
-Checkpoints e saídas de treino são ignorados pelo Git por serem arquivos
-grandes. Os diretórios `out-*` mencionados acima representam resultados locais
-dos experimentos.
-
-## Requisitos
-
-- Python 3.10 ou superior;
-- PyTorch;
-- NumPy;
-- `tiktoken`;
-- `datasets`;
-- `tqdm`;
-- `matplotlib` para gerar gráficos;
-- GPU CUDA opcional, mas recomendada.
-
-Instalação:
-
-```powershell
-python -m pip install torch numpy tiktoken datasets tqdm matplotlib
-```
-
-No ambiente virtual usado neste projeto:
-
-```powershell
-.\venv\Scripts\python.exe -m pip install torch numpy tiktoken datasets tqdm matplotlib
-```
-
-## Preparando os dados
-
-O [data/prepare.py](data/prepare.py) cria os arquivos binários usados pelo
-treinamento. Ele usa streaming e não precisa carregar toda a Wikipédia na
-memória.
-
-Para preparar 100.000 artigos:
-
-```powershell
-.\venv\Scripts\python.exe data\prepare.py --artigos 100000 --forcar
-```
-
-Os arquivos serão criados em:
-
-```text
-data/wiki_pt/train.bin
-data/wiki_pt/val.bin
-```
-
-Opções úteis:
-
-```powershell
-.\venv\Scripts\python.exe data\prepare.py --help
-```
-
-O script também aceita `--fracao-val` e `--seed`. A validação é separada por
-artigo, evitando dividir um mesmo artigo entre treino e validação.
-
-## Configuração do modelo
-
-As configurações ficam no [config.py](config.py). A configuração usada nos
-experimentos registrados é:
-
-```python
-vocab_size = 50257
-block_size = 256
-n_layer = 6
-n_head = 6
-n_embd = 384
-dropout = 0.1
-bias = True
-```
-
-Para uma GPU CUDA:
-
-```python
-device = "cuda"
-```
-
-Para CPU:
-
-```python
-device = "cpu"
-```
-
-Use uma pasta `out_dir` diferente em cada experimento para não misturar
-checkpoints e métricas.
-
-## Treinamento
-
-Depois de preparar os dados:
-
-```powershell
-.\venv\Scripts\python.exe train.py
-```
-
-Os valores padrão vêm do `TrainConfig` em [config.py](config.py). Para fazer
-um teste curto ou trocar a pasta de saída sem editar o arquivo, use argumentos:
+Os valores padrão vêm de `TrainConfig`. Para testar sem editar o arquivo:
 
 ```powershell
 .\venv\Scripts\python.exe train.py `
     --max-iters 20 `
     --eval-interval 10 `
     --eval-iters 5 `
-    --out-dir out-teste
+    --out-dir experiments/teste
 ```
 
-Para retomar um treinamento interrompido a partir de `last.pt`:
+Para retomar um treinamento interrompido:
 
 ```powershell
 .\venv\Scripts\python.exe train.py `
-    --out-dir out-corpus-ptbr-100k-v1 `
+    --out-dir experiments/corpus-ptbr-100k-v1 `
     --resume
 ```
 
-O treinamento salva na pasta definida por `out_dir`:
+O treinamento salva:
 
 ```text
 best.pt       # melhor checkpoint pela val loss
-last.pt       # último estado salvo para retomada
+last.pt       # último estado salvo
 metrics.csv   # losses, perplexidade, learning rate e tempo
 run.json      # configuração e resumo da execução
 ```
 
-O checkpoint inclui pesos do modelo, estado do AdamW, scaler de mixed
-precision, estados aleatórios, configurações e etapa do resultado. Para
-retomar um treino, use o mesmo `out_dir` e defina:
+</details>
 
-```python
-resume = True
-```
+<details>
+<summary>Novo corpus PT-BR</summary>
 
-## Benchmark
-
-Depois do treinamento, gere o relatório:
+O preparador [prepare_corpus_ptbr.py](scripts/prepare_corpus_ptbr.py) usa
+streaming, limpeza, deduplicação e separação por documento:
 
 ```powershell
-.\venv\Scripts\python.exe benchmark.py --out-dir out-wiki-100k-v2
+.\venv\Scripts\python.exe scripts\prepare_corpus_ptbr.py `
+    --documentos 100000 `
+    --out-dir data\corpus_ptbr_100k
 ```
 
-O comando cria:
+Para manter a comparação justa, o novo corpus usa inicialmente a mesma
+arquitetura e o mesmo tokenizer dos experimentos da Wikipédia.
 
-```text
-out-wiki-100k-v2/benchmark.json
-out-wiki-100k-v2/training_metrics.png
-```
+</details>
 
-O relatório registra melhor etapa, loss, perplexidade, duração e memória máxima
-da GPU. O gráfico mostra as curvas de treino/validação e o learning rate.
+<details>
+<summary>Benchmark e comparação</summary>
 
-## Geração de texto
-
-O [generate.py](generate.py) carrega `best.pt` por padrão e permite escolher o
-diretório do checkpoint e o prompt:
+Depois do treinamento:
 
 ```powershell
-.\venv\Scripts\python.exe generate.py `
-    --out-dir out-wiki-100k-v2 `
-    --prompt "A história do Brasil" `
-    --max-new-tokens 200 `
-    --temperature 0.8 `
-    --top-k 100
+.\venv\Scripts\python.exe scripts\benchmark.py `
+    --out-dir experiments/wiki-100k-v2
 ```
 
-Para comparar com a v1:
-
-```powershell
-.\venv\Scripts\python.exe generate.py --out-dir out-wiki-100k-v1 --prompt "A história do Brasil"
-.\venv\Scripts\python.exe generate.py --out-dir out-wiki-100k-v2 --prompt "A história do Brasil"
-```
-
-O tokenizer usado na geração precisa ser o mesmo usado na preparação dos
-dados: `tiktoken.get_encoding("gpt2")`.
-
-## Comparação reproduzível
-
-Para comparar versões, mantenha os mesmos prompts, `temperature`, `top_k` e
-`max_new_tokens`. Alguns prompts usados no projeto:
+Para comparar modelos, mantenha os mesmos prompts, `temperature`, `top_k` e
+`max_new_tokens`. Exemplos:
 
 ```text
 A história do Brasil
@@ -285,78 +192,38 @@ A cidade de São Paulo
 O desenvolvimento da tecnologia no Brasil
 ```
 
-Avalie as gerações por fluidez, coerência, relevância ao prompt, gramática e
-repetição. A perplexidade é útil para comparação quantitativa, mas não mede
-sozinha a qualidade factual ou a utilidade como chatbot.
+Avalie fluidez, coerência, relevância, gramática e repetição. Perplexidade é
+útil para comparação quantitativa, mas não garante factualidade ou qualidade
+de conversa.
 
-## Execução no Kaggle
+</details>
 
-Ative uma GPU nas configurações do Notebook e clone o repositório:
+<details>
+<summary>Execução no Kaggle</summary>
+
+Depois de clonar o repositório e ativar uma GPU:
 
 ```python
-!git clone https://github.com/SEU_USUARIO/SEU_REPOSITORIO.git
-%cd SEU_REPOSITORIO
 !pip install -q tiktoken matplotlib
+!python -u train.py --max-iters 30000 --eval-interval 500 --eval-iters 50 --out-dir experiments/corpus-ptbr-100k-v1
+!python scripts/benchmark.py --out-dir experiments/corpus-ptbr-100k-v1
 ```
 
-Confirme o ambiente:
+</details>
 
-```python
-import torch
+## Limitações e próximos passos
 
-print(torch.cuda.is_available())
-print(torch.cuda.get_device_name(0))
-```
+- o tokenizer atual não é específico para português;
+- o corpus é enciclopédico e não representa conversas;
+- o modelo pode repetir ou combinar fatos incorretamente;
+- ainda faltam avaliação automática e testes mais abrangentes.
 
-Depois execute:
+Próximas etapas: comparar o novo corpus, treinar um tokenizer BPE próprio para
+português e avaliar mudanças de arquitetura.
 
-```python
-!python -u train.py `
-    --max-iters 30000 `
-    --eval-interval 500 `
-    --eval-iters 50 `
-    --out-dir out-corpus-ptbr-100k-v1
-!python benchmark.py --out-dir out-corpus-ptbr-100k-v1
-```
+## Créditos
 
-O checkpoint pode ser salvo como output da versão do Notebook e baixado para
-uso local.
-
-## Limitações
-
-- O modelo foi treinado para continuar textos, não para seguir instruções.
-- O tokenizer GPT-2 não foi treinado especificamente para português.
-- O corpus é enciclopédico e não representa conversas ou instruções.
-- O modelo pode repetir ou combinar fatos de forma incorreta.
-- Perplexidade não garante coerência, factualidade ou ausência de viés.
-
-## Próximos passos
-
-- avaliar um tokenizer mais adequado para português;
-- ampliar e diversificar o corpus;
-- adicionar avaliação automática de repetição e diversidade;
-- comparar diferentes tamanhos de contexto;
-- criar uma etapa de fine-tuning instrucional;
-- adicionar testes automatizados;
-- registrar hardware, versão do código e configuração em cada experimento.
-
-## Créditos e referências
-
-Este é um projeto educacional próprio, inspirado na arquitetura e no fluxo de
-treinamento do **nanoGPT**, criado por **Andrej Karpathy**:
-
-- [karpathy/nanoGPT](https://github.com/karpathy/nanoGPT)
-- [Andrej Karpathy](https://github.com/karpathy)
-
-Fontes e ferramentas:
-
-- **Wikimedia Foundation** — [Wikimedia Downloads](https://dumps.wikimedia.org/);
-- **Hugging Face Datasets** — dataset
-  [wikimedia/wikipedia](https://huggingface.co/datasets/wikimedia/wikipedia);
-- **OpenAI** — biblioteca [tiktoken](https://github.com/openai/tiktoken);
-- **PyTorch** — framework de treinamento
-  [pytorch.org](https://pytorch.org/).
-
-Consulte as licenças e os termos de uso de cada fonte antes de redistribuir o
-dataset ou publicar um modelo treinado com esses dados.
-
+O fluxo é inspirado no [nanoGPT](https://github.com/karpathy/nanoGPT), de
+Andrej Karpathy. O projeto utiliza [PyTorch](https://pytorch.org/),
+[tiktoken](https://github.com/openai/tiktoken) e
+[Hugging Face Datasets](https://huggingface.co/docs/datasets).
