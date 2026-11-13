@@ -26,7 +26,7 @@ class TrainConfig:
     batch_size: int = 8
     gradient_accumulation_steps: int = 4
 
-    max_iters: int = 30_000
+    max_iters: int = 20
     eval_interval: int = 500
     eval_iters: int = 50
 
