@@ -1,3 +1,4 @@
+import argparse
 import csv
 import json
 import math
@@ -11,6 +12,43 @@ import torch
 
 from config import ModelConfig, TrainConfig
 from model import LLM
+
+
+def parse_args() -> argparse.Namespace:
+    parser = argparse.ArgumentParser(
+        description="Treina o modelo usando os valores padrão de config.py."
+    )
+    parser.add_argument("--data-dir", type=str)
+    parser.add_argument("--out-dir", type=str)
+    parser.add_argument("--max-iters", type=int)
+    parser.add_argument("--eval-interval", type=int)
+    parser.add_argument("--eval-iters", type=int)
+    parser.add_argument("--device", type=str)
+    parser.add_argument(
+        "--resume",
+        action="store_true",
+        default=None,
+        help="Retoma o treinamento a partir de last.pt.",
+    )
+    return parser.parse_args()
+
+
+def apply_overrides(
+    train_config: TrainConfig,
+    args: argparse.Namespace,
+) -> None:
+    overrides = {
+        "data_dir": args.data_dir,
+        "out_dir": args.out_dir,
+        "max_iters": args.max_iters,
+        "eval_interval": args.eval_interval,
+        "eval_iters": args.eval_iters,
+        "device": args.device,
+        "resume": args.resume,
+    }
+    for name, value in overrides.items():
+        if value is not None:
+            setattr(train_config, name, value)
 
 
 def get_batch(
@@ -136,6 +174,7 @@ def restore_rng_state(state: dict) -> None:
 def main() -> None:
     model_config = ModelConfig()
     train_config = TrainConfig()
+    apply_overrides(train_config, parse_args())
 
     if train_config.device.startswith("cuda") and not torch.cuda.is_available():
         raise RuntimeError(

@@ -194,6 +194,25 @@ Depois de preparar os dados:
 .\venv\Scripts\python.exe train.py
 ```
 
+Os valores padrão vêm do `TrainConfig` em [config.py](config.py). Para fazer
+um teste curto ou trocar a pasta de saída sem editar o arquivo, use argumentos:
+
+```powershell
+.\venv\Scripts\python.exe train.py `
+    --max-iters 20 `
+    --eval-interval 10 `
+    --eval-iters 5 `
+    --out-dir out-teste
+```
+
+Para retomar um treinamento interrompido a partir de `last.pt`:
+
+```powershell
+.\venv\Scripts\python.exe train.py `
+    --out-dir out-corpus-ptbr-100k-v1 `
+    --resume
+```
+
 O treinamento salva na pasta definida por `out_dir`:
 
 ```text
@@ -292,8 +311,12 @@ print(torch.cuda.get_device_name(0))
 Depois execute:
 
 ```python
-!python train.py
-!python benchmark.py --out-dir out-wiki-100k-v2
+!python -u train.py `
+    --max-iters 30000 `
+    --eval-interval 500 `
+    --eval-iters 50 `
+    --out-dir out-corpus-ptbr-100k-v1
+!python benchmark.py --out-dir out-corpus-ptbr-100k-v1
 ```
 
 O checkpoint pode ser salvo como output da versão do Notebook e baixado para
